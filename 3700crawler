@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+
+import argparse
+import socket
+import ssl
+import html.parser
+import requests
+
+DEFAULT_SERVER = "proj5.3700.network"
+DEFAULT_PORT = 443
+
+
+class Crawler:
+    visited = {}
+    to_visit = {}
+    session_id = ''
+    csrf_token = ''
+
+    def __init__(self, args):
+        self.server = args.server
+        self.port = args.port
+        self.username = args.username
+        self.password = args.password
+
+    def run(self):
+
+        mysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        mysocket.connect((self.server, self.port))
+        context = ssl.create_default_context()
+        tcp_socket = context.wrap_socket(mysocket, server_hostname=self.server)
+
+        # print("REQUESTS TEST")
+        # r = requests.post('https://proj5.3700.network/accounts/login/',
+        #                   data={'username': 'koo.k', 'password': '001699319', 'csrfmiddlewaretoken':"1SXxtw3hVewMhgXYXbxWOBsxdcU6gOVVxlaSQfGxvEvU67Hd41Ka4fldTgXKDkNd", 'next':''})
+        # print(r)
+
+        self.login_and_set_header(tcp_socket)
+
+
+
+        # GET fakebook page
+        request = self.get_path_request("/fakebook/")
+        print("request:\n" + request)
+        response = self.receive_1_0_data(request, tcp_socket)
+
+
+
+    def login_and_set_header(self, tcp_socket):
+
+        request = self.get_path_request("/accounts/login/")
+        print("Request to %s:%d" % (self.server, self.port))
+        print(request)
+        response = self.receive_1_0_data(request, tcp_socket)
+        print(response)
+
+        # Get csrfmiddlewaretoken
+        # html_parser = html.parser.HTMLParser
+        # html_parser.feed(response)
+        # html_parser.handle_starttag('input', [()])
+        csrfmiddlewaretoken = response.split("\"csrfmiddlewaretoken\"")[1].split("\"")[1]
+        print(csrfmiddlewaretoken)
+        # Get csrftoken and sessionid
+        self.csrf_token = self.get_csrf_token(response)
+        print(self.csrf_token)
+        self.session_id = self.get_session_id_token(response)
+        print(self.session_id)
+
+        # request = self.login_post_request("/accounts/login/?next=/fakebook/")
+        request = self.login_post_request("/accounts/login/", csrfmiddlewaretoken)
+        print("request:\n" + request)
+        response = self.receive_1_0_data(request, tcp_socket)
+        self.csrf_token = self.get_csrf_token(response)
+        print(self.csrf_token)
+        self.session_id = self.get_session_id_token(response)
+        print(self.session_id)
+        self.handle_response_code(response)
+
+
+
+        # line_list = response.splitlines()
+        # print("Line LIST:")
+        # print(line_list)
+
+        # request = self.get_path_request("/")
+        # print("request:\n" + request)
+        # response = self.receive_1_0_data(request, tcp_socket)
+        # headers = response.split("<")[0]
+        # print(headers)
+
+    def handle_response_code(self, response):
+        response_code = response[9:12]
+        print("Response code:|%s|" % response_code)
+        if response_code == '302':
+            path = self.get_location_path_from_header(response)
+
+    def get_csrf_token(self, data):
+        token_onwards = data.split("csrftoken=")[1]
+        token = token_onwards.split(";")[0]
+        return token
+
+    def get_session_id_token(self, data):
+        session_id_onwards = data.split("sessionid=")[1]
+        session_id = session_id_onwards.split(";")[0]
+        return session_id
+
+    def get_location_path_from_header(self, response):
+        path = response.split("Location:")[1][1:2]
+        print("Path:|%s|" % path)
+        return path
+    def receive_chunks(self, tcp_socket):
+        data = tcp_socket.recv(65535)
+        # Get Content-Length:
+        # Should have Transfer-Encoding:Chunked header
+        # HTTP1.1 reponds in chunks - each chunk is preceded by its size - transmission ends when a zero-length chunk
+        return
+
+    def receive_1_0_data(self, request, tcp_socket):
+        tcp_socket.send(request.encode('utf8'))
+        data = tcp_socket.recv(65535)
+        decoded_data = data.decode('utf8')
+        print("Response:\n%s" % decoded_data)
+        return decoded_data
+
+    def login_post_request(self, path, csrfmiddlewaretoken):
+        request = "POST " + path + " HTTP/1.1\r\n"
+        request += self.host_header()
+        request += self.keep_alive_header()
+        body = "username=" + self.username + "&password=" + self.password + "&csrfmiddlewaretoken="+csrfmiddlewaretoken
+        request += self.content_length_header(body)
+        request += self.cookie_header()
+        request += self.content_type_header()
+        #request += "Origin: https://proj5.cs3700.network\r\n"
+        #request += "Referer: https://proj5.3700.network/accounts/login/\r\n"
+        request += "\r\n"
+        request += body
+        return request
+
+    def get_path_request(self, path):
+        request = "GET " + path + " HTTP/1.0\r\n"
+        request = self.add_1_0_get_headers(request)
+        return request
+
+    def add_1_1_headers(self, string):
+        string += self.host_header()
+        string += self.keep_alive_header()
+        return string
+
+    def add_1_0_get_headers(self, string):
+        string += self.keep_alive_header()
+        if len(self.session_id) > 0:
+            string += self.cookie_header()
+        return string + "\r\n"
+
+    # ------- HEADERS --------
+
+    def host_header(self):
+        host_header = "Host: " + self.server + ":" + str(self.port) + "\r\n"
+        return host_header
+
+    def content_length_header(self, body):
+        length = self.utf8len(body)
+        length_header = "Content-Length: " + str(length) + "\r\n"
+        return length_header
+
+    def content_type_header(self):
+        return "Content-Type: application/x-www-form-urlencoded\r\n"
+
+    def keep_alive_header(self):
+        keep_alive_header = "Connection: keep-alive\r\n"
+        return keep_alive_header
+
+    def cookie_header(self):
+        cookie_header = "Cookie: "
+        if len(self.csrf_token) > 0:
+            cookie_header += "csrftoken=" + self.csrf_token
+        if len(self.session_id) > 0:
+            cookie_header += "; sessionid=" + self.session_id
+        cookie_header += "\r\n"
+        if len(self.csrf_token) == 0 and len(self.session_id) == 0:
+            return ""
+        return cookie_header
+
+    # -------------------------------
+
+    def request2(self):
+        mysocket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        mysocket2.connect((self.server, self.port))
+
+        context = ssl.create_default_context()
+        tcp_socket2 = context.wrap_socket(mysocket2, server_hostname=self.server)
+
+        request2 = "GET /accounts/login HTTP/1.0\r\n\r\n"
+        tcp_socket2.send(request2.encode('utf8'))
+        data2 = tcp_socket2.recv(65535)
+        decoded_data2 = data2.decode('utf8')
+        print("Response:\n%s" % decoded_data2)
+
+    def utf8len(self, s):
+        return len(s.encode('utf-8'))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='crawl Fakebook')
+    parser.add_argument('-s', dest="server", type=str, default=DEFAULT_SERVER, help="The server to crawl")
+    parser.add_argument('-p', dest="port", type=int, default=DEFAULT_PORT, help="The port to use")
+    parser.add_argument('username', type=str, help="The username to use")
+    parser.add_argument('password', type=str, help="The password to use")
+    args = parser.parse_args()
+    sender = Crawler(args)
+    sender.run()
+
+# koo.k
+# 001699319
