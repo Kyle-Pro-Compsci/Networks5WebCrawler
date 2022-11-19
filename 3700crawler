@@ -34,7 +34,7 @@ class Crawler:
 
         # GET fakebook page
         request = self.get_path_request("/fakebook/")
-        print("request:\n" + request)
+        #print("request:\n" + request)
         response = self.receive_1_0_data(request, tcp_socket)
         #self.visited.add("/fakebook/")
 
@@ -53,47 +53,50 @@ class Crawler:
             self.visited.add(path)
             counter += 1
 
-        print("FLAGS:")
-        print(parser.get_flags())
-        print("VISITED:")
-        print(self.visited)
-        print("TO VISIT")
-        print(self.to_visit)
+        # print("FLAGS:")
+        # print(parser.get_flags())
+        # print("VISITED:")
+        # print(self.visited)
+        # print("TO VISIT")
+        # print(self.to_visit)
+        for flag in parser.get_flags():
+            print(flag)
+
 
 
     def login_and_set_header(self, tcp_socket):
 
         request = self.get_path_request("/accounts/login/")
-        print("Request to %s:%d" % (self.server, self.port))
-        print(request)
+        #print("Request to %s:%d" % (self.server, self.port))
+        #print(request)
         response = self.receive_1_0_data(request, tcp_socket)
-        print(response)
+        #print(response)
 
         # Get csrfmiddlewaretoken
         # html_parser = html.parser.HTMLParser
         # html_parser.feed(response)
         # html_parser.handle_starttag('input', [()])
         csrfmiddlewaretoken = response.split("\"csrfmiddlewaretoken\"")[1].split("\"")[1]
-        print(csrfmiddlewaretoken)
+        #print(csrfmiddlewaretoken)
         # Get csrftoken and sessionid
         self.csrf_token = self.get_csrf_token(response)
-        print(self.csrf_token)
+        #print(self.csrf_token)
         self.session_id = self.get_session_id_token(response)
-        print(self.session_id)
+        #print(self.session_id)
 
         # request = self.login_post_request("/accounts/login/?next=/fakebook/")
         request = self.login_post_request("/accounts/login/", csrfmiddlewaretoken)
-        print("request:\n" + request)
+        #print("request:\n" + request)
         response = self.receive_1_0_data(request, tcp_socket)
         self.csrf_token = self.get_csrf_token(response)
-        print(self.csrf_token)
+        #print(self.csrf_token)
         self.session_id = self.get_session_id_token(response)
-        print(self.session_id)
+        #print(self.session_id)
         self.handle_response_code(response, tcp_socket)
 
     def handle_response_code(self, response, tcp_socket):
         response_code = response[9:12]
-        print("Response code:|%s|" % response_code)
+        #print("Response code:|%s|" % response_code)
         if response_code == '302':
             path = self.get_location_path_from_header(response)
             get_request = self.get_path_request(path)
@@ -120,7 +123,7 @@ class Crawler:
 
     def get_location_path_from_header(self, response):
         path = response.split("Location:")[1][1:2]
-        print("Path:|%s|" % path)
+        #print("Path:|%s|" % path)
         return path
 
     def receive_chunks(self, tcp_socket):
@@ -134,7 +137,7 @@ class Crawler:
         tcp_socket.send(request.encode('utf8'))
         data = tcp_socket.recv(65535)
         decoded_data = data.decode('utf8')
-        print("Response:\n%s" % decoded_data)
+        #print("Response:\n%s" % decoded_data)
         return decoded_data
 
     def login_post_request(self, path, csrfmiddlewaretoken):
@@ -235,15 +238,16 @@ class HTMLWebParser(HTMLParser):
         return
 
     def handle_data(self, data):
-        if 'FLAG:' in data and self.class_flag_attr_found:
+        # if 'FLAG:' in data and self.class_flag_attr_found:
+        if 'FLAG:' in data:
             flag = data.split("FLAG: ")[1][0:64]
             self.flags.append(flag)
-            print("Flag:", flag)
+            #print("Flag:", flag)
 
         # print("Data:", data)
 
     def get_flags(self):
-        print("Getting flags")
+        #print("Getting flags")
         return self.flags
 
 

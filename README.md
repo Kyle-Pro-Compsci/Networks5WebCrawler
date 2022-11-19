@@ -1,28 +1,8 @@
-The idea of the program is to keep a running set of every url that has been visited, as well as a set of every URL seen but not yet visited.
-The parsing was done with html.parser
+This crawler can be split into three phases. The first phase involves collecting the tokens needed to login. The second phase involves sending a POST request to the login page and collecting and storing the cookies obtained. The third phase is a breadth first search using any <href> links encountered as the frontier. Two sets were maintained - one to track the frontier and another to track any URLs that have already been visited. Any URLs that have already been visited are not added to the frontier.
+
+In the second phase the preliminary csrf and session_id cookies were obtained with a GET call to /accounts/login/. The csrfmiddlewaretoken was found by parsing the HTML returned in the HTTP response. The Content-Length header was calculated with a helper method that encoded the body with utf-8 and calculated its size with a len() call.
+
+The majority of the parsing was done with html.parser, allowed me to overwrite the automatic function calls that it had when it found a start tag or HTML data. I used the start tag function to catch every HTML tag, and filtered it to only the tags that contain 'href' and a link with 'fakebook' in it. The flags were filtered to only the pages where the 'class':'secret_flag' tag was encountered, and then string parsing was used to find filter the Data containing the term 'FLAG:' to just its 64 digit flag.
 
 Problems faced:
-Logging in was where about 90% of my time was spent. I developed a lot of misconceptions as to what was needed to make a successful POST request.
-
-Notes on HTTP for self:\
-HTTP used to transmit resources - uRl
-use http parser
-Must use CRLF in string literals, CR - \r, LF - 
-Can just use Path, HTTP proxies would use whole URL
-
-Allowed: urllib.parse, html, html.parser, xml
-
-Initial request line: GET /path/to/file/index.html HTTP/1.0
-HTTP1.1 needs the host header - e.g. Host: www.host1.com:80
-
-https://piazza.com/class/l7kwgqgh3pd6vc/post/616
-
-General Format:
-
-    an initial line,
-    zero or more header lines,
-    a blank line (i.e. a CRLF by itself), and
-    an optional message body (e.g. a file, or query data, or query output). 
-Initial lines and headers should end in CRLF
-
-gzip decoder needs entire data chunk to decode properly 
+Logging in was where about 90% of my time was spent. I developed a lot of misconceptions as to what was needed to make a successful POST request, and trying to reverse engineer the request automatically made by my browser felt aimless at times. A professor's response on Piazza stated that no GET call was required to /accounts/login/ before a POST, which I took as meaning that the initial session_id and csrf cookies were not necessary. I also took the warning to examine the HTML carefully as examine the HTTP carefully. Thus when I encountered the csrfmiddlewaretoken and googled it, it seemed to be an efficiency token used by a browser plugin and I ended up looking elsewhere. I instead found myself googling every single header to see if it would help me authenticate my login.
