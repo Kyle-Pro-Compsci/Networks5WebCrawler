@@ -23,7 +23,7 @@ class Crawler:
         self.session_id = ''
         self.csrf_token = ''
 
-
+    # The top level of the program.
     def run(self):
         mysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         mysocket.connect((self.server, self.port))
@@ -63,7 +63,7 @@ class Crawler:
             print(flag)
 
 
-
+    # Handles all the functionality needed to send a successful POST request, and stores the returned cookies.
     def login_and_set_header(self, tcp_socket):
 
         request = self.get_path_request("/accounts/login/")
@@ -73,9 +73,6 @@ class Crawler:
         #print(response)
 
         # Get csrfmiddlewaretoken
-        # html_parser = html.parser.HTMLParser
-        # html_parser.feed(response)
-        # html_parser.handle_starttag('input', [()])
         csrfmiddlewaretoken = response.split("\"csrfmiddlewaretoken\"")[1].split("\"")[1]
         #print(csrfmiddlewaretoken)
         # Get csrftoken and sessionid
@@ -215,6 +212,7 @@ class Crawler:
         return self.to_visit
 
 
+# An implementation of HTMLParser that searches and stores flags and links in the given Crawler.
 class HTMLWebParser(HTMLParser):
 
     crawler: Crawler
