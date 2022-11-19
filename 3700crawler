@@ -3,7 +3,7 @@
 import argparse
 import socket
 import ssl
-import html.parser
+from html.parser import HTMLParser
 import requests
 
 DEFAULT_SERVER = "proj5.3700.network"
@@ -11,38 +11,54 @@ DEFAULT_PORT = 443
 
 
 class Crawler:
-    visited = {}
-    to_visit = {}
-    session_id = ''
-    csrf_token = ''
 
-    def __init__(self, args):
-        self.server = args.server
-        self.port = args.port
-        self.username = args.username
-        self.password = args.password
+    def __init__(self, arguments):
+        self.server = arguments.server
+        self.port = arguments.port
+        self.username = arguments.username
+        self.password = arguments.password
+
+        self.visited = set()
+        self.to_visit = set()
+        self.session_id = ''
+        self.csrf_token = ''
+
 
     def run(self):
-
         mysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         mysocket.connect((self.server, self.port))
         context = ssl.create_default_context()
         tcp_socket = context.wrap_socket(mysocket, server_hostname=self.server)
 
-        # print("REQUESTS TEST")
-        # r = requests.post('https://proj5.3700.network/accounts/login/',
-        #                   data={'username': 'koo.k', 'password': '001699319', 'csrfmiddlewaretoken':"1SXxtw3hVewMhgXYXbxWOBsxdcU6gOVVxlaSQfGxvEvU67Hd41Ka4fldTgXKDkNd", 'next':''})
-        # print(r)
-
         self.login_and_set_header(tcp_socket)
-
-
 
         # GET fakebook page
         request = self.get_path_request("/fakebook/")
         print("request:\n" + request)
         response = self.receive_1_0_data(request, tcp_socket)
+        #self.visited.add("/fakebook/")
 
+        parser = HTMLWebParser(self)
+        parser.feed(response)
+        # parser.feed('<h2 class=\'secret_flag\' style="color:red">FLAG: 64-characters-of-random-alphanumerics</h2>')
+
+        counter = 0
+        while len(self.to_visit) > 0:
+            # if counter == 10:
+            #     break
+            path = self.to_visit.pop()
+            request = self.get_path_request(path)
+            response = self.receive_1_0_data(request, tcp_socket)
+            parser.feed(response)
+            self.visited.add(path)
+            counter += 1
+
+        print("FLAGS:")
+        print(parser.get_flags())
+        print("VISITED:")
+        print(self.visited)
+        print("TO VISIT")
+        print(self.to_visit)
 
 
     def login_and_set_header(self, tcp_socket):
@@ -73,25 +89,24 @@ class Crawler:
         print(self.csrf_token)
         self.session_id = self.get_session_id_token(response)
         print(self.session_id)
-        self.handle_response_code(response)
+        self.handle_response_code(response, tcp_socket)
 
-
-
-        # line_list = response.splitlines()
-        # print("Line LIST:")
-        # print(line_list)
-
-        # request = self.get_path_request("/")
-        # print("request:\n" + request)
-        # response = self.receive_1_0_data(request, tcp_socket)
-        # headers = response.split("<")[0]
-        # print(headers)
-
-    def handle_response_code(self, response):
+    def handle_response_code(self, response, tcp_socket):
         response_code = response[9:12]
         print("Response code:|%s|" % response_code)
         if response_code == '302':
             path = self.get_location_path_from_header(response)
+            get_request = self.get_path_request(path)
+            self.receive_1_0_data(get_request, tcp_socket)
+        elif response_code == '403':
+            raise Exception("403 Encountered")
+        elif response_code == '404':
+            raise Exception("404 Encountered")
+        elif response_code == '503':
+            raise Exception("503 Encountered")
+        else:
+            raise Exception("Unrecognzed response code")
+        return
 
     def get_csrf_token(self, data):
         token_onwards = data.split("csrftoken=")[1]
@@ -107,6 +122,7 @@ class Crawler:
         path = response.split("Location:")[1][1:2]
         print("Path:|%s|" % path)
         return path
+
     def receive_chunks(self, tcp_socket):
         data = tcp_socket.recv(65535)
         # Get Content-Length:
@@ -125,25 +141,27 @@ class Crawler:
         request = "POST " + path + " HTTP/1.1\r\n"
         request += self.host_header()
         request += self.keep_alive_header()
-        body = "username=" + self.username + "&password=" + self.password + "&csrfmiddlewaretoken="+csrfmiddlewaretoken
+        body = "username=" + self.username + "&password=" + self.password + "&csrfmiddlewaretoken=" + csrfmiddlewaretoken
         request += self.content_length_header(body)
         request += self.cookie_header()
         request += self.content_type_header()
-        #request += "Origin: https://proj5.cs3700.network\r\n"
-        #request += "Referer: https://proj5.3700.network/accounts/login/\r\n"
+        # request += "Origin: https://proj5.cs3700.network\r\n"
+        # request += "Referer: https://proj5.3700.network/accounts/login/\r\n"
         request += "\r\n"
         request += body
         return request
 
     def get_path_request(self, path):
-        request = "GET " + path + " HTTP/1.0\r\n"
-        request = self.add_1_0_get_headers(request)
+        request = "GET " + path + " HTTP/1.1\r\n"
+        request += self.get_1_1_headers()
+        request += "\r\n"
         return request
 
-    def add_1_1_headers(self, string):
-        string += self.host_header()
-        string += self.keep_alive_header()
-        return string
+    def get_1_1_headers(self):
+        headers = self.host_header()
+        headers += self.keep_alive_header()
+        headers += self.cookie_header()
+        return headers
 
     def add_1_0_get_headers(self, string):
         string += self.keep_alive_header()
@@ -170,33 +188,65 @@ class Crawler:
         return keep_alive_header
 
     def cookie_header(self):
+        if len(self.csrf_token) == 0 and len(self.session_id) == 0:
+            return ""
         cookie_header = "Cookie: "
         if len(self.csrf_token) > 0:
             cookie_header += "csrftoken=" + self.csrf_token
         if len(self.session_id) > 0:
-            cookie_header += "; sessionid=" + self.session_id
+            if len(self.csrf_token) > 0:
+                cookie_header += "; "
+            cookie_header += "sessionid=" + self.session_id
         cookie_header += "\r\n"
-        if len(self.csrf_token) == 0 and len(self.session_id) == 0:
-            return ""
         return cookie_header
 
     # -------------------------------
 
-    def request2(self):
-        mysocket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        mysocket2.connect((self.server, self.port))
-
-        context = ssl.create_default_context()
-        tcp_socket2 = context.wrap_socket(mysocket2, server_hostname=self.server)
-
-        request2 = "GET /accounts/login HTTP/1.0\r\n\r\n"
-        tcp_socket2.send(request2.encode('utf8'))
-        data2 = tcp_socket2.recv(65535)
-        decoded_data2 = data2.decode('utf8')
-        print("Response:\n%s" % decoded_data2)
-
     def utf8len(self, s):
         return len(s.encode('utf-8'))
+
+    def get_visited(self):
+        return self.visited
+
+    def get_to_visit(self):
+        return self.to_visit
+
+
+class HTMLWebParser(HTMLParser):
+
+    crawler: Crawler
+
+    def __init__(self, crawler):
+        HTMLParser.__init__(self)
+        self.flags = []
+        self.class_flag_attr_found = False
+        self.crawler = crawler
+
+    def handle_starttag(self, tag, attrs):
+        # print("Start tag:", tag)
+        # print("Attrs:", attrs)
+        if ('class', 'secret_flag') in attrs:
+            self.class_flag_attr_found = True
+        for tuple in attrs:
+            if 'href' in tuple:
+                path = tuple[1]
+                if path not in self.crawler.visited and 'fakebook' in path:
+                    self.crawler.to_visit.add(path)
+        return
+
+    def handle_data(self, data):
+        if 'FLAG:' in data and self.class_flag_attr_found:
+            flag = data.split("FLAG: ")[1][0:64]
+            self.flags.append(flag)
+            print("Flag:", flag)
+
+        # print("Data:", data)
+
+    def get_flags(self):
+        print("Getting flags")
+        return self.flags
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='crawl Fakebook')

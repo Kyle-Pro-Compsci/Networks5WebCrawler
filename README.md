@@ -1,4 +1,8 @@
 The idea of the program is to keep a running set of every url that has been visited, as well as a set of every URL seen but not yet visited.
+The parsing was done with html.parser
+
+Problems faced:
+Logging in was where about 90% of my time was spent. I developed a lot of misconceptions as to what was needed to make a successful POST request.
 
 Notes on HTTP for self:\
 HTTP used to transmit resources - uRl
